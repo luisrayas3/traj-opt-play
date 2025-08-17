@@ -1,1 +1,7 @@
-# Trying out TrajOpt with a UR5e robot
+# Proof-of-concept TrajOpt implementation with UR5e
+
+## How to
+
+```
+docker compose up --build
+```
