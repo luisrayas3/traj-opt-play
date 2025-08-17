@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  traj-opt:
+    build: .
+    container_name: traj-opt-sandbox
+    volumes:
+      - ./src:/app/src
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+    network_mode: host
+    stdin_open: true
+    tty: true
+    privileged: true
