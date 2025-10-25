@@ -2,175 +2,179 @@
 
 import os
 import subprocess
-import tempfile
-from pathlib import Path
 
 import numpy as np
 
 import tesseract_robotics as tr
 import tesseract_robotics.tesseract_common as tr_common
-import tesseract_robotics.tesseract_environment as tr_environment
-import tesseract_robotics.tesseract_scene_graph as tr_scene_graph
+import tesseract_robotics.tesseract_environment as tr_env
 import tesseract_robotics.tesseract_srdf as tr_srdf
 import tesseract_robotics.tesseract_collision as tr_collision
 import tesseract_robotics.tesseract_kinematics as tr_kinematics
 import tesseract_robotics.tesseract_motion_planners as tr_planners
 import tesseract_robotics.tesseract_task_composer as tr_task_composer
-import tesseract_robotics.tesseract_command_language as tr_command_lang
+import tesseract_robotics.tesseract_command_language as tr_cmd
+import tesseract_robotics_viewer as tr_viewer
 
 
-def load_urdf_from_xacro(xacro_file_path):
+def load_urdf_from_xacro(xacro_filepath):
     """
     Load URDF from xacro file
     """
     try:
-        result = subprocess.run(
-            ["xacro", str(xacro_file_path)],
+        # Set ROS_PACKAGE_PATH to help xacro find packages
+        env = os.environ.copy()
+        env["ROS_PACKAGE_PATH"] = "/app/universal_robot"
+
+        return subprocess.run(
+            ["xacro", str(xacro_filepath)],
             capture_output=True,
             text=True,
             check=True,
-        )
-        return result.stdout
+            env=env,
+        ).stdout
     except subprocess.CalledProcessError as e:
         print(f"Xacro error: {e.stderr}")
         raise
 
 
-def create_tesseract_environment():
+def create_tesseract_environment(
+    urdf_filepath: str,
+) -> tr_env.Environment:
     """
     Create and initialize Tesseract environment with UR5e
     """
-    urdf_path = Path(__file__).parent / "ur5e.urdf"
-
-    with open(urdf_path, "r") as f:
+    # Read the URDF file
+    with open(urdf_filepath, "r") as f:
         urdf_string = f.read()
 
-    tr_env = tr_environment.Environment()
-    resource_locator = tr_common.GeneralResourceLocator()
+    # Replace package:// URIs with absolute file paths
+    urdf_string = urdf_string.replace(
+        "package://ur_description", "file:///app/universal_robot/ur_description"
+    )
 
-    success = tr_env.init(urdf_string, resource_locator)
-    if not success:
+    env = tr_env.Environment()
+    if not env.init(urdf_string, tr_common.GeneralResourceLocator()):
         raise RuntimeError(
             "Failed to initialize Tesseract environment with URDF"
         )
 
-    return tr_env
+    return env
 
 
-def setup_basic_trajopt_problem(env):
-    """
-    Simple TrajOpt example call
-    """
-    initial_joints = np.array([0.0, -1.57, 0.0, -1.57, 0.0, 0.0])
+joint_names = [
+    "shoulder_pan_joint",
+    "shoulder_lift_joint",
+    "elbow_joint",
+    "wrist_1_joint",
+    "wrist_2_joint",
+    "wrist_3_joint",
+]
+
+
+def run_example_planning(env, manipulator_info, initial_joints):
     goal_joints = np.array([1.57, -1.0, 0.5, -2.0, 0.0, 0.0])
 
-    joint_names = [
-        "shoulder_pan_joint",
-        "shoulder_lift_joint",
-        "elbow_joint",
-        "wrist_1_joint",
-        "wrist_2_joint",
-        "wrist_3_joint",
-    ]
-
     task_data = tr_task_composer.TaskComposerDataStorage()
-
-    manipulator_info = tr_common.ManipulatorInfo()
-    manipulator_info.manipulator = "manipulator"
-    manipulator_info.working_frame = "base_link"
-    manipulator_info.tcp_frame = "tool0"
-
-    start_waypoint = tr_command_lang.StateWaypoint(joint_names, start_joints)
-    start_waypoint_poly = tr_command_lang.StateWaypointPoly_wrap_StateWaypoint(
-        start_waypoint
-    )
-    start_instruction = tr_command_lang.MoveInstruction(
-        start_waypoint_poly,
-        tr_command_lang.MoveInstructionType_FREESPACE,
-        "DEFAULT",
-    )
-
-    goal_waypoint = tr_command_lang.StateWaypoint(joint_names, goal_joints)
-    goal_waypoint_poly = tr_command_lang.StateWaypointPoly_wrap_StateWaypoint(
-        goal_waypoint
-    )
-    goal_instruction = tr_command_lang.MoveInstruction(
-        goal_waypoint_poly,
-        tr_command_lang.MoveInstructionType_FREESPACE,
-        "DEFAULT",
+    task_data.setData("environment", tr_env.AnyPoly_wrap_EnvironmentConst(env))
+    task_data.setData(
+        "profiles",
+        tr_cmd.AnyPoly_wrap_ProfileDictionary(tr_cmd.ProfileDictionary()),
     )
 
     # Create composite instruction (program)
-    program = tr_command_lang.CompositeInstruction("DEFAULT")
-    program.setManipulatorInfo(manipulator_info)
-    start_instruction_poly = (
-        tr_command_lang.MoveInstructionPoly_wrap_MoveInstruction(
-            start_instruction
-        )
+    program = tr_cmd.CompositeInstruction(
+        "DEFAULT", manipulator_info, tr_cmd.CompositeInstructionOrder_ORDERED
     )
-    goal_instruction_poly = (
-        tr_command_lang.MoveInstructionPoly_wrap_MoveInstruction(
-            goal_instruction
-        )
+
+    start_waypoint_poly = tr_cmd.StateWaypointPoly_wrap_StateWaypoint(
+        tr_cmd.StateWaypoint(joint_names, initial_joints)
+    )
+    start_instruction = tr_cmd.MoveInstruction(
+        start_waypoint_poly, tr_cmd.MoveInstructionType_FREESPACE, "DEFAULT"
+    )
+    start_instruction_poly = tr_cmd.MoveInstructionPoly_wrap_MoveInstruction(
+        start_instruction
     )
     program.appendMoveInstruction(start_instruction_poly)
-    program.appendMoveInstruction(goal_instruction_poly)
 
-    # Set the program in task data - wrap in AnyPoly
-    program_poly = tr_command_lang.AnyPoly_wrap_CompositeInstruction(program)
-    task_data.setData("input", program_poly)
+    goal_waypoint_poly = tr_cmd.StateWaypointPoly_wrap_StateWaypoint(
+        tr_cmd.StateWaypoint(joint_names, goal_joints)
+    )
+    goal_instruction = tr_cmd.MoveInstruction(
+        goal_waypoint_poly, tr_cmd.MoveInstructionType_FREESPACE, "DEFAULT"
+    )
+    goal_instruction_poly = tr_cmd.MoveInstructionPoly_wrap_MoveInstruction(
+        goal_instruction
+    )
+    program.appendMoveInstruction(goal_instruction_poly)
 
     # Create task composer factory
     factory = tr_task_composer.TaskComposerPluginFactory()
 
     # Create TrajOpt pipeline task
-    task = factory.createTaskComposerTask("TrajOptPipeline")
+    task = factory.createTaskComposerNode("TrajOptPipeline")
     if task is None:
         raise RuntimeError("Failed to create TrajOpt pipeline task")
+
+    # Set the program in task data
+    input_key = task.getInputKeys().get("input")
+    task_data.setData(
+        input_key, tr_cmd.AnyPoly_wrap_CompositeInstruction(program)
+    )
 
     # Create executor
     task_executor = factory.createTaskComposerExecutor("TaskflowExecutor")
     if task_executor is None:
         raise RuntimeError("Failed to create task executor")
 
-    # Create context and set environment
-    context = tr_task_composer.TaskComposerContext()
-    context.data_storage = task_data
-    # TODO: Figure out how to properly set environment in context
-
     # Execute planning
-    future = task_executor.run(task.get(), context)
+    future = task_executor.run(task.get(), task_data)
     future.wait()
 
-    return future.context
+    if not future.context.isSuccessful():
+        return None
+    output_key = task.getOutputKeys().get("program")
+    return AnyPoly_as_CompositeInstruction(
+        future.context.data_storage.getData(output_key)
+    )
 
 
 def main():
-    """
-    Main function to demonstrate Tesseract TrajOpt
-    """
-    print("Tesseract environment initializing...")
-    env = create_tesseract_environment()
-    print("...Tesseract environment created successfully!")
+    print("Creating Tesseract environment...")
+    env = create_tesseract_environment("/app/src/ur5e.urdf")
+    print("...Tesseract environment created!")
 
-    context = setup_basic_trajopt_problem(env)
+    manipulator_info = tr_common.ManipulatorInfo()
+    manipulator_info.manipulator = "manipulator"
+    manipulator_info.working_frame = "base_link"
+    manipulator_info.tcp_frame = "tool0"
 
-    if context.isSuccessful():
-        print("Trajectory optimization successful!")
-        try:
-            # Try to get trajectory data
-            output_keys = context.data_storage.getKeys()
-            print(f"Available output keys: {list(output_keys)}")
-            if output_keys:
-                trajectory_data = context.data_storage.getData(
-                    list(output_keys)[0]
-                )
-                print(f"Found trajectory data: {type(trajectory_data)}")
-        except Exception as e:
-            print(f"Could not extract trajectory details: {e}")
-    else:
-        error_msg = getattr(context, "message", "Unknown error")
-        print(f"Trajectory optimization failed: {error_msg}")
+    initial_joints = np.array([0.0, -1.57, 0.0, -1.57, 0.0, 0.0])
+    viewer = tr_viewer.TesseractViewer()
+    viewer.update_environment(env, [0, 0, 0])
+    viewer.update_joint_positions(joint_names, initial_joints)
+    viewer.start_serve_background()
+
+    print("Planning...")
+    print("")
+    result = run_example_planning(env, manipulator_info, initial_joints)
+    if result is None:
+        print("Planning failed!")
+        return
+
+    print("Planning success!")
+    for instruction_poly in result:
+        assert instruction_poly.isMoveInstruction()
+        wp_poly = tr_cmd.InstructionPoly_as_MoveInstructionPoly(
+            instruction_poly
+        ).getWaypoint()
+        assert wp_poly.isStateWaypoint()
+        wp = tr_cmd.WaypointPoly_as_StateWaypointPoly(wp_poly)
+        print(f"Waypoint: t={wp.getTime()}, j={wp.getPosition().flatten()}")
+
+    viewer.update_trajectory(result)
+    viewer.plot_trajectory(result, manipulator_info)
 
 
 if __name__ == "__main__":
