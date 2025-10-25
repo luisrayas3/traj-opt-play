@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+from pathlib import Path
 
 import numpy as np
 
@@ -109,8 +110,12 @@ def run_example_planning(env, manipulator_info, initial_joints):
     )
     program.appendMoveInstruction(goal_instruction_poly)
 
-    # Create task composer factory
-    factory = tr_task_composer.TaskComposerPluginFactory()
+    # Create task composer factory with config file
+    config_path = Path(__file__).parent / "task_composer_plugins.yaml"
+    factory = tr_task_composer.TaskComposerPluginFactory(
+        tr_common.FilesystemPath(str(config_path)),
+        tr_common.GeneralResourceLocator(),
+    )
 
     # Create TrajOpt pipeline task
     task = factory.createTaskComposerNode("TrajOptPipeline")
@@ -118,9 +123,8 @@ def run_example_planning(env, manipulator_info, initial_joints):
         raise RuntimeError("Failed to create TrajOpt pipeline task")
 
     # Set the program in task data
-    input_key = task.getInputKeys().get("input")
     task_data.setData(
-        input_key, tr_cmd.AnyPoly_wrap_CompositeInstruction(program)
+        "planning_input", tr_cmd.AnyPoly_wrap_CompositeInstruction(program)
     )
 
     # Create executor
@@ -133,14 +137,19 @@ def run_example_planning(env, manipulator_info, initial_joints):
     future.wait()
 
     if not future.context.isSuccessful():
+        print(f"Planning failed with status: {future.context.isAborted()}")
+        print(f"Task info: {task.getName() if hasattr(task, 'getName') else 'unknown'}")
         return None
     output_key = task.getOutputKeys().get("program")
-    return AnyPoly_as_CompositeInstruction(
+    return tr_cmd.AnyPoly_as_CompositeInstruction(
         future.context.data_storage.getData(output_key)
     )
 
 
 def main():
+    # Enable debug logging
+    os.environ["TRAJOPT_LOG_THRESH"] = "INFO"
+
     print("Creating Tesseract environment...")
     env = create_tesseract_environment("/app/src/ur5e.urdf")
     print("...Tesseract environment created!")
