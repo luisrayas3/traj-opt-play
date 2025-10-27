@@ -1,6 +1,7 @@
 services:
   traj-opt:
     build: .
+    platform: linux/amd64
     container_name: traj-opt-sandbox
     volumes:
       - ./src:/app/src

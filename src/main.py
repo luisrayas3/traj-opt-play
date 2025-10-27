@@ -5,7 +5,6 @@ import subprocess
 from pathlib import Path
 
 import numpy as np
-
 import tesseract_robotics as tr
 import tesseract_robotics.tesseract_common as tr_common
 import tesseract_robotics.tesseract_environment as tr_env
