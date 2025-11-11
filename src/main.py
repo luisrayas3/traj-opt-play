@@ -137,7 +137,9 @@ def run_example_planning(env, manipulator_info, initial_joints):
 
     if not future.context.isSuccessful():
         print(f"Planning failed with status: {future.context.isAborted()}")
-        print(f"Task info: {task.getName() if hasattr(task, 'getName') else 'unknown'}")
+        print(
+            f"Task info: {task.getName() if hasattr(task, 'getName') else 'unknown'}"
+        )
         return None
     output_key = task.getOutputKeys().get("program")
     return tr_cmd.AnyPoly_as_CompositeInstruction(
@@ -146,9 +148,6 @@ def run_example_planning(env, manipulator_info, initial_joints):
 
 
 def main():
-    # Enable debug logging
-    os.environ["TRAJOPT_LOG_THRESH"] = "INFO"
-
     print("Creating Tesseract environment...")
     env = create_tesseract_environment("/app/src/ur5e.urdf")
     print("...Tesseract environment created!")
