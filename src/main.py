@@ -73,7 +73,7 @@ joint_names = [
 
 
 def run_example_planning(env, manipulator_info, initial_joints):
-    goal_joints = np.array([1.57, -1.0, 0.5, -2.0, 0.0, 0.0])
+    goal_joints = np.array([0.0, -1.57, 0.0, -1.57, 0.0, 0.2])
 
     task_data = tr_task_composer.TaskComposerDataStorage()
     task_data.setData("environment", tr_env.AnyPoly_wrap_EnvironmentConst(env))
@@ -132,14 +132,14 @@ def run_example_planning(env, manipulator_info, initial_joints):
         raise RuntimeError("Failed to create task executor")
 
     # Execute planning
+    print("Starting actual plan...")
     future = task_executor.run(task.get(), task_data)
     future.wait()
+    print("...Finished actual plan")
 
     if not future.context.isSuccessful():
-        print(f"Planning failed with status: {future.context.isAborted()}")
-        print(
-            f"Task info: {task.getName() if hasattr(task, 'getName') else 'unknown'}"
-        )
+        print(f"Planning aborted? {future.context.isAborted()}")
+        print(f"Task '{task.getName()}' infos: {future.context.task_infos.getInfo(future.context.task_infos.getRootNode())}")
         return None
     output_key = task.getOutputKeys().get("program")
     return tr_cmd.AnyPoly_as_CompositeInstruction(
