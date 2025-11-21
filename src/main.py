@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import numpy as np
@@ -39,19 +40,21 @@ def load_urdf_from_xacro(xacro_filepath):
 
 
 def create_tesseract_environment(
-    urdf_filepath: str,
+    urdf_filepath: str, srdf_filepath: str
 ) -> tr_env.Environment:
     """
     Create and initialize Tesseract environment with UR5e
     """
-    # Read the URDF file
     with open(urdf_filepath, "r") as f:
         urdf_string = f.read()
-
     # Replace package:// URIs with absolute file paths
     urdf_string = urdf_string.replace(
         "package://ur_description", "file:///app/universal_robot/ur_description"
     )
+
+    with open(srdf_filepath, "r") as f:
+        srdf_string = f.read()
+    print(srdf_string)
 
     env = tr_env.Environment()
     if not env.init(urdf_string, tr_common.GeneralResourceLocator()):
@@ -72,8 +75,30 @@ joint_names = [
 ]
 
 
+def debug_task_state(context: tr_task_composer.TaskComposerContext):
+    print(f"Aborted? {context.isAborted()}")
+    aborting_node_info = context.task_infos.getInfo(
+        context.task_infos.getAbortingNode()
+    )
+    print(f"  {aborting_node_info.name}")
+    print(f"  {aborting_node_info.type}")
+    print(f"  {aborting_node_info.status_message}")
+    for edge in aborting_node_info.inbound_edges:
+        print(f"  {str(edge)}:")
+        if edge_info := context.task_infos.getInfo(edge):
+            print(f"    name={edge_info.name}")
+            print(f"    triggers_abort={edge_info.triggers_abort}")
+            print(f"    return_value={edge_info.return_value}")
+            print(f"    status_code={edge_info.status_code}")
+            print(f"    status_message={edge_info.status_message}")
+        else:
+            print("    null")
+    print(f"  {str(aborting_node_info.input_keys)}")
+    print(f"  {str(aborting_node_info.output_keys)}")
+
+
 def run_example_planning(env, manipulator_info, initial_joints):
-    goal_joints = np.array([0.0, -1.57, 0.0, -1.57, 0.0, 0.2])
+    goal_joints = np.array([0.0, -1.57, 0.0, -1.57, 0.0, 0.0])
 
     task_data = tr_task_composer.TaskComposerDataStorage()
     task_data.setData("environment", tr_env.AnyPoly_wrap_EnvironmentConst(env))
@@ -138,8 +163,8 @@ def run_example_planning(env, manipulator_info, initial_joints):
     print("...Finished actual plan")
 
     if not future.context.isSuccessful():
-        print(f"Planning aborted? {future.context.isAborted()}")
-        print(f"Task '{task.getName()}' infos: {future.context.task_infos.getInfo(future.context.task_infos.getRootNode())}")
+        print(f"Task '{task.getName()}' failed:")
+        debug_task_state(future.context)
         return None
     output_key = task.getOutputKeys().get("program")
     return tr_cmd.AnyPoly_as_CompositeInstruction(
@@ -149,7 +174,9 @@ def run_example_planning(env, manipulator_info, initial_joints):
 
 def main():
     print("Creating Tesseract environment...")
-    env = create_tesseract_environment("/app/src/ur5e.urdf")
+    env = create_tesseract_environment(
+        "/app/src/ur5e.urdf", "/app/src/ur5e.srdf"
+    )
     print("...Tesseract environment created!")
 
     manipulator_info = tr_common.ManipulatorInfo()
@@ -168,20 +195,27 @@ def main():
     result = run_example_planning(env, manipulator_info, initial_joints)
     if result is None:
         print("Planning failed!")
-        return
+    else:
+        print("Planning success!")
+        for instruction_poly in result:
+            assert instruction_poly.isMoveInstruction()
+            wp_poly = tr_cmd.InstructionPoly_as_MoveInstructionPoly(
+                instruction_poly
+            ).getWaypoint()
+            assert wp_poly.isStateWaypoint()
+            wp = tr_cmd.WaypointPoly_as_StateWaypointPoly(wp_poly)
+            print(f"Waypoint: t={wp.getTime()}, j={wp.getPosition().flatten()}")
 
-    print("Planning success!")
-    for instruction_poly in result:
-        assert instruction_poly.isMoveInstruction()
-        wp_poly = tr_cmd.InstructionPoly_as_MoveInstructionPoly(
-            instruction_poly
-        ).getWaypoint()
-        assert wp_poly.isStateWaypoint()
-        wp = tr_cmd.WaypointPoly_as_StateWaypointPoly(wp_poly)
-        print(f"Waypoint: t={wp.getTime()}, j={wp.getPosition().flatten()}")
+        viewer.update_trajectory(result)
+        viewer.plot_trajectory(result, manipulator_info)
 
-    viewer.update_trajectory(result)
-    viewer.plot_trajectory(result, manipulator_info)
+    try:
+        while True:
+            time.sleep(0.5)
+    except Exception:
+        pass
+    finally:
+        viewer.close()
 
 
 if __name__ == "__main__":

@@ -9,7 +9,6 @@ services:
     environment:
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
-      - TRAJOPT_LOG_THRESH=TRACE
     network_mode: host
     stdin_open: true
     tty: true
