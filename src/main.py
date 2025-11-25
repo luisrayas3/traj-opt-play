@@ -40,7 +40,7 @@ def load_urdf_from_xacro(xacro_filepath):
 
 
 def create_tesseract_environment(
-    urdf_filepath: str, srdf_filepath: str
+    urdf_filepath: str, srdf_filepath: str, plugins_filepath: str
 ) -> tr_env.Environment:
     """
     Create and initialize Tesseract environment with UR5e
@@ -54,13 +54,16 @@ def create_tesseract_environment(
 
     with open(srdf_filepath, "r") as f:
         srdf_string = f.read()
-    print(srdf_string)
 
+    locator = tr_common.GeneralResourceLocator()
     env = tr_env.Environment()
-    if not env.init(urdf_string, tr_common.GeneralResourceLocator()):
+    if not env.init(urdf_string, srdf_string, locator):
         raise RuntimeError(
             "Failed to initialize Tesseract environment with URDF"
         )
+
+    # Load kinematics plugin configuration
+    # env.loadKinematicsPluginFactory(tr_common.FilesystemPath(plugins_filepath))
 
     return env
 
@@ -175,7 +178,7 @@ def run_example_planning(env, manipulator_info, initial_joints):
 def main():
     print("Creating Tesseract environment...")
     env = create_tesseract_environment(
-        "/app/src/ur5e.urdf", "/app/src/ur5e.srdf"
+        "/app/src/ur5e.urdf", "/app/src/ur5e.srdf", "/app/src/ur5e_plugins.yaml"
     )
     print("...Tesseract environment created!")
 
