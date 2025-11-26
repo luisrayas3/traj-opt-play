@@ -40,7 +40,7 @@ def load_urdf_from_xacro(xacro_filepath):
 
 
 def create_tesseract_environment(
-    urdf_filepath: str, srdf_filepath: str, plugins_filepath: str
+    urdf_filepath: str, srdf_filepath: str
 ) -> tr_env.Environment:
     """
     Create and initialize Tesseract environment with UR5e
@@ -83,25 +83,24 @@ def debug_task_state(context: tr_task_composer.TaskComposerContext):
     aborting_node_info = context.task_infos.getInfo(
         context.task_infos.getAbortingNode()
     )
-    print(f"  {aborting_node_info.name}")
-    print(f"  {aborting_node_info.type}")
-    print(f"  {aborting_node_info.status_message}")
+    print(f"  name={aborting_node_info.name}")
+    print(f"  type={aborting_node_info.type}")
+    print(f"  status_message={aborting_node_info.status_message}")
     for edge in aborting_node_info.inbound_edges:
         print(f"  {str(edge)}:")
         if edge_info := context.task_infos.getInfo(edge):
             print(f"    name={edge_info.name}")
+            print(f"    type={edge_info.type}")
             print(f"    triggers_abort={edge_info.triggers_abort}")
             print(f"    return_value={edge_info.return_value}")
             print(f"    status_code={edge_info.status_code}")
             print(f"    status_message={edge_info.status_message}")
         else:
             print("    null")
-    print(f"  {str(aborting_node_info.input_keys)}")
-    print(f"  {str(aborting_node_info.output_keys)}")
 
 
 def run_example_planning(env, manipulator_info, initial_joints):
-    goal_joints = np.array([0.0, -1.57, 0.0, -1.57, 0.0, 0.0])
+    goal_joints = np.array([0.0, -1.57, 0.0, -1.57, 0.0, 0.5])
 
     task_data = tr_task_composer.TaskComposerDataStorage()
     task_data.setData("environment", tr_env.AnyPoly_wrap_EnvironmentConst(env))
@@ -178,7 +177,7 @@ def run_example_planning(env, manipulator_info, initial_joints):
 def main():
     print("Creating Tesseract environment...")
     env = create_tesseract_environment(
-        "/app/src/ur5e.urdf", "/app/src/ur5e.srdf", "/app/src/ur5e_plugins.yaml"
+        "/app/src/ur5e.urdf", "/app/src/ur5e.srdf"
     )
     print("...Tesseract environment created!")
 

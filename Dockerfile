@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone ur_description for mesh files into /app
-RUN git clone --depth 1 --branch melodic-devel \
+RUN git clone --depth 1 --branch noetic-devel \
     https://github.com/ros-industrial/universal_robot.git \
     /app/universal_robot
 

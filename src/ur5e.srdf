@@ -19,5 +19,6 @@
 
   <!-- Plugins -->
   <kinematics_plugin_config filename="file:///app/src/ur5e_plugins.yaml" />
+  <contact_managers_plugin_config filename="file:///app/src/contact_manager_plugins.yaml"/>
 
 </robot>
