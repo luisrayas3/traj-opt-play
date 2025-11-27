@@ -225,9 +225,9 @@ def run_example_planning(env, manipulator_info, initial_joints):
         print(f"Task '{task.getName()}' failed:")
         debug_task_state(future.context, env)
         return None
-    output_key = task.getOutputKeys().get("program")
+
     return tr_cmd.AnyPoly_as_CompositeInstruction(
-        future.context.data_storage.getData(output_key)
+        future.context.data_storage.getData("output_data")
     )
 
 
@@ -257,14 +257,22 @@ def main():
         return
     else:
         print("Planning success!")
-        for instruction_poly in result:
-            assert instruction_poly.isMoveInstruction()
-            wp_poly = tr_cmd.InstructionPoly_as_MoveInstructionPoly(
+        for i, instruction_poly in enumerate(result):
+            print(f"Waypoint {i}:")
+            if not instruction_poly.isMoveInstruction():
+                print("  Not a move instruction")
+                continue
+            # Store move_instruction to keep it alive (lifetime issue)
+            move_instruction = tr_cmd.InstructionPoly_as_MoveInstructionPoly(
                 instruction_poly
-            ).getWaypoint()
-            # assert wp_poly.isStateWaypoint()
-            # wp = tr_cmd.WaypointPoly_as_StateWaypointPoly(wp_poly)
-            # print(f"Waypoint: t={wp.getTime()}, j={wp.getPosition().flatten()}")
+            )
+            wp_poly = move_instruction.getWaypoint()
+            if not wp_poly.isStateWaypoint():
+                print("  Not a StateWaypoint, skipping")
+                continue
+            state_wp = tr_cmd.WaypointPoly_as_StateWaypointPoly(wp_poly)
+            joint_positions = state_wp.getPosition().flatten()
+            print(f"  Joints: {joint_positions}")
 
         viewer.update_trajectory(result)
         viewer.plot_trajectory(result, manipulator_info)
