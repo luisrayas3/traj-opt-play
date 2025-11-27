@@ -18,12 +18,11 @@ RUN git clone --depth 1 --branch noetic-devel \
     /app/universal_robot
 
 # Install Python packages
-RUN python3 -m pip install --upgrade pip && \
-    python3 -m pip install \
-        "numpy>=1.19,<1.24" \
-        tesseract-robotics==0.5.1 \
-        tesseract-robotics-viewer==0.5.0 \
-        xacro
+RUN python3 -m pip install --upgrade pip && python3 -m pip install \
+    "numpy>=1.19,<1.24" \
+    tesseract-robotics==0.5.1 \
+    tesseract-robotics-viewer==0.5.0 \
+    xacrodoc
 
 # Copy source files
 COPY src/ ./src/

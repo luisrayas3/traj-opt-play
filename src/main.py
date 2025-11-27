@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-import os
-import subprocess
 import time
 from pathlib import Path
 
@@ -16,41 +14,33 @@ import tesseract_robotics.tesseract_motion_planners as tr_planners
 import tesseract_robotics.tesseract_task_composer as tr_task_composer
 import tesseract_robotics.tesseract_command_language as tr_cmd
 import tesseract_robotics_viewer as tr_viewer
+import xacrodoc
 
 
 def load_urdf_from_xacro(xacro_filepath):
     """
     Load URDF from xacro file
     """
-    try:
-        # Set ROS_PACKAGE_PATH to help xacro find packages
-        env = os.environ.copy()
-        env["ROS_PACKAGE_PATH"] = "/app/universal_robot"
-
-        return subprocess.run(
-            ["xacro", str(xacro_filepath)],
-            capture_output=True,
-            text=True,
-            check=True,
-            env=env,
-        ).stdout
-    except subprocess.CalledProcessError as e:
-        print(f"Xacro error: {e.stderr}")
-        raise
+    xacrodoc.packages.look_in(["/app/universal_robot"])
+    return xacrodoc.XacroDoc.from_file(str(xacro_filepath)).to_urdf_string()
 
 
 def create_tesseract_environment(
     urdf_filepath: str, srdf_filepath: str
 ) -> tr_env.Environment:
     """
-    Create and initialize Tesseract environment with UR5e
+    Create and initialize Tesseract environment
     """
-    with open(urdf_filepath, "r") as f:
-        urdf_string = f.read()
-    # Replace package:// URIs with absolute file paths
-    urdf_string = urdf_string.replace(
-        "package://ur_description", "file:///app/universal_robot/ur_description"
-    )
+    if urdf_filepath.endswith(".xacro"):
+        urdf_string = load_urdf_from_xacro(urdf_filepath)
+    else:
+        with open(urdf_filepath, "r") as f:
+            urdf_string = f.read()
+        # Replace package:// URIs with absolute file paths
+        urdf_string = urdf_string.replace(
+            "package://ur_description",
+            "file:///app/universal_robot/ur_description",
+        )
 
     with open(srdf_filepath, "r") as f:
         srdf_string = f.read()
@@ -61,9 +51,6 @@ def create_tesseract_environment(
         raise RuntimeError(
             "Failed to initialize Tesseract environment with URDF"
         )
-
-    # Load kinematics plugin configuration
-    # env.loadKinematicsPluginFactory(tr_common.FilesystemPath(plugins_filepath))
 
     return env
 
@@ -100,7 +87,7 @@ def debug_task_state(context: tr_task_composer.TaskComposerContext):
 
 
 def run_example_planning(env, manipulator_info, initial_joints):
-    goal_joints = np.array([0.0, -1.57, 0.0, -1.57, 0.0, 0.5])
+    goal_joints = np.array([0.0, 0, 0.0, 0.0, 0.0, 0.5])
 
     task_data = tr_task_composer.TaskComposerDataStorage()
     task_data.setData("environment", tr_env.AnyPoly_wrap_EnvironmentConst(env))
@@ -177,7 +164,7 @@ def run_example_planning(env, manipulator_info, initial_joints):
 def main():
     print("Creating Tesseract environment...")
     env = create_tesseract_environment(
-        "/app/src/ur5e.urdf", "/app/src/ur5e.srdf"
+        "/app/src/system.urdf.xacro", "/app/src/ur5e.srdf"
     )
     print("...Tesseract environment created!")
 
@@ -186,7 +173,7 @@ def main():
     manipulator_info.working_frame = "base_link"
     manipulator_info.tcp_frame = "tool0"
 
-    initial_joints = np.array([0.0, -1.57, 0.0, -1.57, 0.0, 0.0])
+    initial_joints = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     viewer = tr_viewer.TesseractViewer()
     viewer.update_environment(env, [0, 0, 0])
     viewer.update_joint_positions(joint_names, initial_joints)
