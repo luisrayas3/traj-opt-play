@@ -124,7 +124,7 @@ def run_example_planning(env, manipulator_info, initial_joints):
     program.appendMoveInstruction(goal_instruction_poly)
 
     # Create task composer factory with config file
-    config_path = Path(__file__).parent / "task_composer_plugins.yaml"
+    config_path = Path(__file__).parent / "task_composer_plugins_trajopt.yaml"
     factory = tr_task_composer.TaskComposerPluginFactory(
         tr_common.FilesystemPath(str(config_path)),
         tr_common.GeneralResourceLocator(),

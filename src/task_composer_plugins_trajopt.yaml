@@ -1,0 +1,123 @@
+task_composer_plugins:
+  search_paths:
+    - /usr/local/lib/python3.11/site-packages/tesseract_robotics.libs
+  search_libraries:
+    - libtesseract_task_composer_factories-828b6bf0
+    - libtesseract_task_composer_planning_factories-716f01e5
+    - libtesseract_task_composer_taskflow_factories-cb7e64bb
+  executors:
+    default: TaskflowExecutor
+    plugins:
+      TaskflowExecutor:
+        class: TaskflowTaskComposerExecutorFactory
+        config:
+          threads: 5
+  tasks:
+    plugins:
+      TrajOptTask:
+        class: PipelineTaskFactory
+        config:
+          conditional: true
+          inputs:
+            program: input_data
+            environment: environment
+            profiles: profiles
+          outputs:
+            program: output_data
+          nodes:
+            DoneTask:
+              class: DoneTaskFactory
+              config:
+                conditional: false
+            ErrorTask:
+              class: ErrorTaskFactory
+              config:
+                conditional: false
+            MinLengthTask:
+              class: MinLengthTaskFactory
+              config:
+                conditional: true
+                inputs:
+                  program: input_data
+                  environment: environment
+                  profiles: profiles
+                outputs:
+                  program: output_data
+            TrajOptMotionPlannerTask:
+              class: TrajOptMotionPlannerTaskFactory
+              config:
+                conditional: true
+                inputs:
+                  program: output_data
+                  environment: environment
+                  profiles: profiles
+                outputs:
+                  program: output_data
+                format_result_as_input: false
+            DiscreteContactCheckTask:
+              class: DiscreteContactCheckTaskFactory
+              config:
+                conditional: true
+                inputs:
+                  program: output_data
+                  environment: environment
+                  profiles: profiles
+            IterativeSplineParameterizationTask:
+              class: IterativeSplineParameterizationTaskFactory
+              config:
+                conditional: true
+                inputs:
+                  program: output_data
+                  environment: environment
+                  profiles: profiles
+                outputs:
+                  program: output_data
+          edges:
+            - source: MinLengthTask
+              destinations: [ErrorTask, TrajOptMotionPlannerTask]
+            - source: TrajOptMotionPlannerTask
+              destinations: [ErrorTask, DiscreteContactCheckTask]
+            - source: DiscreteContactCheckTask
+              destinations: [ErrorTask, IterativeSplineParameterizationTask]
+            - source: IterativeSplineParameterizationTask
+              destinations: [ErrorTask, DoneTask]
+          terminals: [ErrorTask, DoneTask]
+      TrajOptPipeline:
+        class: PipelineTaskFactory
+        config:
+          conditional: false
+          inputs:
+            planning_input: planning_input
+            environment: environment
+            profiles: profiles
+          outputs:
+            program: output_data
+          nodes:
+            ProcessInputTask:
+              class: ProcessPlanningInputTaskFactory
+              config:
+                conditional: false
+                inputs:
+                  planning_input: planning_input
+                outputs:
+                  program: input_data
+            FormatInputTask:
+              class: FormatPlanningInputTaskFactory
+              config:
+                conditional: false
+                inputs:
+                  program: input_data
+                  environment: environment
+                outputs:
+                  program: input_data
+            MotionPlanningTask:
+              task: TrajOptTask
+              config:
+                conditional: false
+                abort_terminal: 0
+          edges:
+            - source: ProcessInputTask
+              destinations: [FormatInputTask]
+            - source: FormatInputTask
+              destinations: [MotionPlanningTask]
+          terminals: [MotionPlanningTask]
