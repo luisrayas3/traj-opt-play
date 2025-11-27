@@ -65,7 +65,69 @@ joint_names = [
 ]
 
 
-def debug_task_state(context: tr_task_composer.TaskComposerContext):
+def debug_collision_failures(
+    context: tr_task_composer.TaskComposerContext, env
+):
+    """
+    Debug collision failures by checking each waypoint in the trajectory.
+    Prints detailed collision information including which links collide and penetration depth.
+    """
+    results_key = "output_data"
+    if not context.data_storage.hasKey(results_key):
+        print("  No output_data found to check collisions")
+        return
+
+    results = tr_cmd.AnyPoly_as_CompositeInstruction(
+        context.data_storage.getData(results_key)
+    )
+    print(f"Checking {len(results)} waypoints for collisions:")
+
+    # Setup collision manager
+    contact_manager = env.getDiscreteContactManager()
+    contact_manager.setActiveCollisionObjects(env.getActiveLinkNames())
+    contact_manager.setCollisionMarginData(tr_common.CollisionMarginData(0.0))
+
+    collision_count = 0
+    for i, instruction in enumerate(results):
+        if not instruction.isMoveInstruction():
+            continue
+
+        move_instruction = tr_cmd.InstructionPoly_as_MoveInstructionPoly(
+            instruction
+        )
+        wp = move_instruction.getWaypoint()
+        if not wp.isStateWaypoint():
+            continue
+
+        state_wp = tr_cmd.WaypointPoly_as_StateWaypointPoly(wp)
+        joint_positions = state_wp.getPosition().flatten()
+
+        # Set state and check collision
+        env.setState(state_wp.getNames(), joint_positions)
+        env_state = env.getState()
+        contact_manager.setCollisionObjectsTransform(env_state.link_transforms)
+
+        contact_map = tr_collision.ContactResultMap()
+        contact_manager.contactTest(contact_map, tr_collision.ContactRequest())
+
+        contact_vector = tr_collision.ContactResultVector()
+        contact_map.flattenMoveResults(contact_vector)
+
+        if len(contact_vector) > 0:
+            collision_count += 1
+            print(f"  Waypoint {i}: COLLISION")
+            print(f"    Joints: {joint_positions}")
+            for j in range(len(contact_vector)):
+                contact = contact_vector[j]
+                print(
+                    f"    {contact.link_names[0]} <-> {contact.link_names[1]}: {contact.distance:.4f}m"
+                )
+
+    if collision_count == 0:
+        print("  No collisions detected (might be a different failure)")
+
+
+def debug_task_state(context: tr_task_composer.TaskComposerContext, env):
     print(f"Aborted? {context.isAborted()}")
     aborting_node_info = context.task_infos.getInfo(
         context.task_infos.getAbortingNode()
@@ -73,6 +135,7 @@ def debug_task_state(context: tr_task_composer.TaskComposerContext):
     print(f"  name={aborting_node_info.name}")
     print(f"  type={aborting_node_info.type}")
     print(f"  status_message={aborting_node_info.status_message}")
+
     for edge in aborting_node_info.inbound_edges:
         print(f"  {str(edge)}:")
         if edge_info := context.task_infos.getInfo(edge):
@@ -85,15 +148,22 @@ def debug_task_state(context: tr_task_composer.TaskComposerContext):
         else:
             print("    null")
 
+    # Check for collision failures
+    try:
+        debug_collision_failures(context, env)
+    except Exception as e:
+        print(f"Error debugging collisions: {e}")
+
 
 def run_example_planning(env, manipulator_info, initial_joints):
     goal_joints = np.array([0.0, 0, 0.0, 0.0, 0.0, 0.5])
 
     task_data = tr_task_composer.TaskComposerDataStorage()
     task_data.setData("environment", tr_env.AnyPoly_wrap_EnvironmentConst(env))
+
+    profiles = tr_cmd.ProfileDictionary()
     task_data.setData(
-        "profiles",
-        tr_cmd.AnyPoly_wrap_ProfileDictionary(tr_cmd.ProfileDictionary()),
+        "profiles", tr_cmd.AnyPoly_wrap_ProfileDictionary(profiles)
     )
 
     # Create composite instruction (program)
@@ -153,7 +223,7 @@ def run_example_planning(env, manipulator_info, initial_joints):
 
     if not future.context.isSuccessful():
         print(f"Task '{task.getName()}' failed:")
-        debug_task_state(future.context)
+        debug_task_state(future.context, env)
         return None
     output_key = task.getOutputKeys().get("program")
     return tr_cmd.AnyPoly_as_CompositeInstruction(
@@ -184,6 +254,7 @@ def main():
     result = run_example_planning(env, manipulator_info, initial_joints)
     if result is None:
         print("Planning failed!")
+        return
     else:
         print("Planning success!")
         for instruction_poly in result:
@@ -191,9 +262,9 @@ def main():
             wp_poly = tr_cmd.InstructionPoly_as_MoveInstructionPoly(
                 instruction_poly
             ).getWaypoint()
-            assert wp_poly.isStateWaypoint()
-            wp = tr_cmd.WaypointPoly_as_StateWaypointPoly(wp_poly)
-            print(f"Waypoint: t={wp.getTime()}, j={wp.getPosition().flatten()}")
+            # assert wp_poly.isStateWaypoint()
+            # wp = tr_cmd.WaypointPoly_as_StateWaypointPoly(wp_poly)
+            # print(f"Waypoint: t={wp.getTime()}, j={wp.getPosition().flatten()}")
 
         viewer.update_trajectory(result)
         viewer.plot_trajectory(result, manipulator_info)
